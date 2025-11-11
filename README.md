@@ -1,7 +1,3 @@
-<<<<<<< HEAD
-# trimly
-Trimly is a sleek, modern barber shop app designed to simplify and enhance the grooming experience for both barbers and customers internationally. It offers easy appointment scheduling, personalized grooming profiles, and seamless online payments.
-=======
 # Barber Authentication Boilerplate - NestJS
 
 A complete NestJS authentication boilerplate with OTP-based signup/login and MPIN authentication using JWT tokens, following **Screaming Architecture** folder structure with **MySQL** database.
@@ -246,4 +242,6 @@ This project follows **Screaming Architecture** principles:
 ## License
 
 ISC
->>>>>>> 7495be2 (Initial commit)
+
+# trimly
+Trimly is a sleek, modern barber shop app designed to simplify and enhance the grooming experience for both barbers and customers internationally. It offers easy appointment scheduling, personalized grooming profiles, and seamless online payments.
