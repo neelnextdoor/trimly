@@ -12,6 +12,9 @@ import { LoginDto } from './dto/login.dto';
 import { VerifyLoginOtpDto } from './dto/verify-login-otp.dto';
 import { SetMpinDto } from './dto/set-mpin.dto';
 import { LoginWithMpinDto } from './dto/login-with-mpin.dto';
+import { CompleteProfileDto } from './dto/complete-profile.dto';
+import { UseGuards, Request } from '@nestjs/common';
+import { JwtAuthGuard } from './jwt-auth.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -51,6 +54,13 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async loginWithMpin(@Body() loginDto: LoginWithMpinDto) {
     return this.authService.loginWithMpin(loginDto);
+  }
+
+  @Post('signup/complete')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async completeProfile(@Request() req, @Body() completeProfileDto: CompleteProfileDto) {
+    return this.authService.completeProfile(parseInt(req.user.userId), completeProfileDto);
   }
 }
 

@@ -9,6 +9,7 @@ import { LoginDto } from './dto/login.dto';
 import { VerifyLoginOtpDto } from './dto/verify-login-otp.dto';
 import { SetMpinDto } from './dto/set-mpin.dto';
 import { LoginWithMpinDto } from './dto/login-with-mpin.dto';
+import { CompleteProfileDto } from './dto/complete-profile.dto';
 import { AuthResponse, JwtPayload } from './auth.types';
 
 @Injectable()
@@ -27,50 +28,44 @@ export class AuthService {
   }
 
   /**
-   * Send OTP to user (email or SMS)
+   * Send OTP to user (SMS)
    * In production, integrate with SMS service like Twilio, AWS SNS, etc.
    */
-  private async sendOTP(email: string, phone: string, otp: string): Promise<void> {
-    // TODO: Integrate with actual SMS/Email service
-    console.log(`OTP for ${email} (${phone}): ${otp}`);
+  private async sendOTP(phone: string, otp: string): Promise<void> {
+    // TODO: Integrate with actual SMS service
+    console.log(`OTP for ${phone}: ${otp}`);
     // For now, we'll just log it. In production, use:
     // - SMS: Twilio, AWS SNS, etc.
-    // - Email: Nodemailer, SendGrid, etc.
   }
 
   /**
-   * Save OTP to user document
+   * Save OTP to OTP table
    */
-  private async saveOTP(userId: string, otp: string): Promise<void> {
+  private async saveOTP(phoneNumber: string, otp: string): Promise<void> {
     const otpExpiryMinutes = parseInt(this.configService.get('OTP_EXPIRY_MINUTES') || '10');
     const otpExpiry = new Date();
     otpExpiry.setMinutes(otpExpiry.getMinutes() + otpExpiryMinutes);
 
-    await this.authRepository.updateOtp(userId, otp, otpExpiry);
+    await this.authRepository.createOtp(phoneNumber, otp, otpExpiry);
   }
 
   /**
-   * Verify OTP
+   * Verify OTP from OTP table
    */
-  private async verifyOTP(userId: string, otp: string): Promise<boolean> {
-    const user = await this.authRepository.findById(userId);
+  private async verifyOTP(phoneNumber: string, otp: string): Promise<boolean> {
+    const otpRecord = await this.authRepository.findActiveOtp(phoneNumber, otp);
     
-    if (!user || !user.otp || !user.otpExpiry) {
+    if (!otpRecord) {
       return false;
     }
 
     // Check if OTP is expired
-    if (new Date() > user.otpExpiry) {
+    if (new Date() > otpRecord.expiryAt) {
       return false;
     }
 
-    // Check if OTP matches
-    if (user.otp !== otp) {
-      return false;
-    }
-
-    // Clear OTP after successful verification
-    await this.authRepository.clearOtp(userId);
+    // Mark OTP as consumed
+    await this.authRepository.consumeOtp(otpRecord.id);
 
     return true;
   }
@@ -83,60 +78,108 @@ export class AuthService {
   }
 
   /**
-   * Signup - Send OTP
+   * Signup - Send OTP (only phone number required)
    */
   async signup(signupDto: SignupDto): Promise<AuthResponse> {
-    const { email, phone, name } = signupDto;
+    const { phone } = signupDto;
 
-    // Check if user already exists
-    const existingUser = await this.authRepository.findExistingUser(email, phone);
+    // Check if user already exists with this phone
+    const existingUser = await this.authRepository.findByPhone(phone);
     if (existingUser) {
-      throw new BadRequestException('User already exists with this email or phone');
+      throw new BadRequestException('User already exists with this phone number');
     }
-
-    // Create user (not verified yet)
-    const user = await this.authRepository.create({
-      email,
-      phone,
-      name,
-      isVerified: false,
-    });
 
     // Generate and send OTP
     const otp = this.generateOTP();
-    await this.saveOTP(user.id, otp);
-    await this.sendOTP(email, phone, otp);
+    await this.saveOTP(phone, otp);
+    await this.sendOTP(phone, otp);
 
     return {
-      message: 'OTP sent successfully',
-      userId: user.id,
+      message: 'OTP sent successfully to your phone number',
     };
   }
 
   /**
-   * Verify OTP and complete signup
+   * Verify OTP and create user account
    */
   async verifySignupOtp(verifyDto: VerifySignupOtpDto): Promise<AuthResponse> {
-    const { userId, otp } = verifyDto;
+    const { phone, otp } = verifyDto;
 
+    // Verify OTP
+    const isValid = await this.verifyOTP(phone, otp);
+    if (!isValid) {
+      throw new BadRequestException('Invalid or expired OTP');
+    }
+
+    // Check if user already exists
+    const existingUser = await this.authRepository.findByPhone(phone);
+    if (existingUser) {
+      throw new BadRequestException('User already exists with this phone number');
+    }
+
+    // Create user account with minimal data (phone number only)
+    // User will complete profile in next step
+    // Using temporary placeholder values for required fields
+    const tempEmail = `temp_${phone.replace(/\D/g, '')}@temp.barber`;
+    const user = await this.authRepository.create({
+      phoneNumber: phone,
+      firstName: 'Temp', // Will be updated in complete profile
+      lastName: 'User', // Will be updated in complete profile
+      email: tempEmail, // Will be updated in complete profile
+      isActive: true,
+    });
+
+    // Generate JWT token for profile completion
+    const token = this.generateToken({
+      userId: user.id.toString(),
+      email: '',
+    });
+
+    return {
+      message: 'Account created successfully. Please complete your profile.',
+      token,
+      userId: user.id.toString(),
+    };
+  }
+
+  /**
+   * Complete user profile after signup
+   */
+  async completeProfile(userId: number, profileDto: CompleteProfileDto): Promise<AuthResponse> {
     const user = await this.authRepository.findById(userId);
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
-    // Verify OTP
-    const isValid = await this.verifyOTP(userId, otp);
-    if (!isValid) {
-      throw new BadRequestException('Invalid or expired OTP');
+    // Check if email is already taken by another user
+    if (profileDto.email) {
+      const existingUserWithEmail = await this.authRepository.findByEmail(profileDto.email);
+      if (existingUserWithEmail && existingUserWithEmail.id !== userId) {
+        throw new BadRequestException('Email already exists');
+      }
     }
 
-    // Mark user as verified
-    await this.authRepository.markAsVerified(userId);
+    // Update user profile
+    await this.authRepository.updateProfile(userId, {
+      email: profileDto.email.toLowerCase(),
+      firstName: profileDto.firstName,
+      lastName: profileDto.lastName,
+      country: profileDto.country || null,
+      state: profileDto.state || null,
+      city: profileDto.city || null,
+      dob: profileDto.dob ? new Date(profileDto.dob) : null,
+      picUrl: profileDto.picUrl || null,
+    });
+
+    const updatedUser = await this.authRepository.findById(userId);
 
     return {
-      message: 'Signup verified successfully',
-      userId: user.id,
-      mpinSet: user.mpinSet,
+      message: 'Profile completed successfully',
+      user: {
+        id: updatedUser!.id.toString(),
+        email: updatedUser!.email,
+        name: updatedUser!.name,
+      },
     };
   }
 
@@ -156,18 +199,18 @@ export class AuthService {
       throw new NotFoundException('User not found');
     }
 
-    if (!user.isVerified) {
-      throw new BadRequestException('User not verified. Please complete signup first');
+    if (!user.isActive) {
+      throw new BadRequestException('User account is not active');
     }
 
     // Generate and send OTP
     const otp = this.generateOTP();
-    await this.saveOTP(user.id, otp);
-    await this.sendOTP(user.email, user.phone, otp);
+    await this.saveOTP(user.phoneNumber, otp);
+    await this.sendOTP(user.phoneNumber, otp);
 
     return {
       message: 'OTP sent successfully',
-      userId: user.id,
+      userId: user.id.toString(),
     };
   }
 
@@ -177,20 +220,20 @@ export class AuthService {
   async verifyLoginOtp(verifyDto: VerifyLoginOtpDto): Promise<AuthResponse> {
     const { userId, otp } = verifyDto;
 
-    const user = await this.authRepository.findById(userId);
+    const user = await this.authRepository.findById(parseInt(userId));
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
     // Verify OTP
-    const isValid = await this.verifyOTP(userId, otp);
+    const isValid = await this.verifyOTP(user.phoneNumber, otp);
     if (!isValid) {
       throw new BadRequestException('Invalid or expired OTP');
     }
 
     // Generate JWT token
     const token = this.generateToken({
-      userId: user.id,
+      userId: user.id.toString(),
       email: user.email,
     });
 
@@ -198,7 +241,7 @@ export class AuthService {
       message: 'Login successful',
       token,
       user: {
-        id: user.id,
+        id: user.id.toString(),
         email: user.email,
         name: user.name,
         mpinSet: user.mpinSet,
@@ -216,18 +259,18 @@ export class AuthService {
       throw new BadRequestException('MPIN must be a 4-digit number');
     }
 
-    const user = await this.authRepository.findById(userId);
+    const user = await this.authRepository.findById(parseInt(userId));
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
-    if (!user.isVerified) {
-      throw new BadRequestException('User must be verified before setting MPIN');
+    if (!user.isActive) {
+      throw new BadRequestException('User account is not active');
     }
 
     // Hash MPIN
     const hashedMPIN = await bcrypt.hash(mpin, 10);
-    await this.authRepository.updateMpin(userId, hashedMPIN);
+    await this.authRepository.updateMpin(user.id, hashedMPIN);
 
     return {
       message: 'MPIN set successfully',
@@ -250,19 +293,19 @@ export class AuthService {
       throw new NotFoundException('User not found');
     }
 
-    if (!user.mpinSet || !user.mpin) {
+    if (!user.mpinSet || !user.mpinHash) {
       throw new BadRequestException('MPIN not set. Please set MPIN first');
     }
 
     // Verify MPIN
-    const isValid = await bcrypt.compare(mpin, user.mpin);
+    const isValid = await bcrypt.compare(mpin, user.mpinHash);
     if (!isValid) {
       throw new UnauthorizedException('Invalid MPIN');
     }
 
     // Generate JWT token
     const token = this.generateToken({
-      userId: user.id,
+      userId: user.id.toString(),
       email: user.email,
     });
 
@@ -270,7 +313,7 @@ export class AuthService {
       message: 'Login successful',
       token,
       user: {
-        id: user.id,
+        id: user.id.toString(),
         email: user.email,
         name: user.name,
       },
@@ -281,12 +324,12 @@ export class AuthService {
    * Validate JWT token and return user
    */
   async validateUser(userId: string): Promise<any> {
-    const user = await this.authRepository.findById(userId);
+    const user = await this.authRepository.findById(parseInt(userId));
     if (!user) {
       return null;
     }
     return {
-      userId: user.id,
+      userId: user.id.toString(),
       email: user.email,
     };
   }

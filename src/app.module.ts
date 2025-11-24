@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from './auth/auth.module';
 import { UserModule } from './user/user.module';
 import { User } from './auth/auth.model';
+import { OTP } from './auth/otp.model';
 
 @Module({
   imports: [
@@ -25,8 +26,8 @@ import { User } from './auth/auth.model';
           port: parseInt(configService.get<string>('DB_PORT') || '3306', 10),
           username: configService.get<string>('DB_USER') || 'root',
           password: dbPassword,
-          database: configService.get<string>('DB_NAME') || 'intellect',
-          entities: [User],
+          database: configService.get<string>('DB_NAME') || 'barber',
+          entities: [User, OTP],
           synchronize: configService.get<string>('NODE_ENV') !== 'production', // Auto-sync schema in dev
           logging: configService.get<string>('NODE_ENV') === 'development',
         };

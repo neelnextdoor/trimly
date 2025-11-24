@@ -1,16 +1,9 @@
-import { IsEmail, IsNotEmpty, IsString, IsMobilePhone } from 'class-validator';
+import { IsNotEmpty, IsString, Matches } from 'class-validator';
 
 export class SignupDto {
-  @IsEmail()
-  @IsNotEmpty()
-  email: string;
-
-  @IsMobilePhone()
-  @IsNotEmpty()
-  phone: string;
-
   @IsString()
   @IsNotEmpty()
-  name: string;
+  @Matches(/^\+?[1-9]\d{1,14}$/, { message: 'phone must be a valid phone number in E.164 format' })
+  phone: string;
 }
 

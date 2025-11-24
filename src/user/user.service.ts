@@ -8,38 +8,58 @@ export class UserService {
   constructor(private readonly userRepository: UserRepository) {}
 
   async getProfile(userId: string): Promise<UserProfileResponse> {
-    const user = await this.userRepository.findById(userId);
+    const user = await this.userRepository.findById(parseInt(userId));
     
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
     return {
-      id: user.id,
+      id: user.id.toString(),
       email: user.email,
-      phone: user.phone,
+      phoneNumber: user.phoneNumber,
+      firstName: user.firstName,
+      lastName: user.lastName,
       name: user.name,
+      country: user.country || undefined,
+      state: user.state || undefined,
+      city: user.city || undefined,
+      dob: user.dob || undefined,
+      picUrl: user.picUrl || undefined,
       mpinSet: user.mpinSet,
-      isVerified: user.isVerified,
+      isActive: user.isActive,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
   }
 
   async updateProfile(userId: string, updateDto: UpdateProfileDto): Promise<UserProfileResponse> {
-    const user = await this.userRepository.updateProfile(userId, updateDto);
+    // Convert dob string to Date if provided
+    const updateData: any = { ...updateDto };
+    if (updateDto.dob) {
+      updateData.dob = new Date(updateDto.dob);
+    }
+    
+    const user = await this.userRepository.updateProfile(parseInt(userId), updateData);
     
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
     return {
-      id: user.id,
+      id: user.id.toString(),
       email: user.email,
-      phone: user.phone,
+      phoneNumber: user.phoneNumber,
+      firstName: user.firstName,
+      lastName: user.lastName,
       name: user.name,
+      country: user.country || undefined,
+      state: user.state || undefined,
+      city: user.city || undefined,
+      dob: user.dob || undefined,
+      picUrl: user.picUrl || undefined,
       mpinSet: user.mpinSet,
-      isVerified: user.isVerified,
+      isActive: user.isActive,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };

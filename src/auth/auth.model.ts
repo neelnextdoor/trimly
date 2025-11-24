@@ -4,40 +4,80 @@ import {
   PrimaryGeneratedColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 
-@Entity('users')
+@Entity('User')
 export class User {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+  @PrimaryGeneratedColumn()
+  id: number;
 
-  @Column({ unique: true, length: 255 })
+  @Column({ name: 'first_name', length: 255 })
+  firstName: string;
+
+  @Column({ name: 'last_name', length: 255 })
+  lastName: string;
+
+  @Column({ name: 'email', unique: true, length: 255 })
   email: string;
 
-  @Column({ unique: true, length: 20 })
-  phone: string;
+  @Column({ name: 'phone_number', unique: true, length: 20 })
+  phoneNumber: string;
 
-  @Column({ length: 255 })
-  name: string;
+  @Column({ name: 'mpin_hash', nullable: true, length: 255 })
+  mpinHash: string | null;
 
-  @Column({ nullable: true, length: 6 })
-  otp: string | null;
+  @Column({ name: 'dob', nullable: true, type: 'date' })
+  dob: Date | null;
 
-  @Column({ nullable: true, type: 'datetime' })
-  otpExpiry: Date | null;
+  @Column({ name: 'pic_url', nullable: true, length: 500 })
+  picUrl: string | null;
 
-  @Column({ nullable: true, length: 255 })
-  mpin: string | null;
+  @Column({ name: 'country', nullable: true, length: 100 })
+  country: string | null;
 
-  @Column({ default: false })
-  mpinSet: boolean;
+  @Column({ name: 'state', nullable: true, length: 100 })
+  state: string | null;
 
-  @Column({ default: false })
-  isVerified: boolean;
+  @Column({ name: 'city', nullable: true, length: 100 })
+  city: string | null;
 
-  @CreateDateColumn()
+  @Column({ name: 'is_active', default: true })
+  isActive: boolean;
+
+  @Column({ name: 'created_by', nullable: true })
+  createdBy: number | null;
+
+  @Column({ name: 'updated_by', nullable: true })
+  updatedBy: number | null;
+
+  @Column({ name: 'role_id', nullable: true })
+  roleId: number | null;
+
+  @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
+
+  // Helper getter for full name (backward compatibility)
+  get name(): string {
+    return `${this.firstName} ${this.lastName}`.trim();
+  }
+
+  // Helper getter for phone (backward compatibility)
+  get phone(): string {
+    return this.phoneNumber;
+  }
+
+  // Helper getter for mpinSet (check if mpinHash exists)
+  get mpinSet(): boolean {
+    return !!this.mpinHash;
+  }
+
+  // Helper getter for mpin (backward compatibility)
+  get mpin(): string | null {
+    return this.mpinHash;
+  }
 }

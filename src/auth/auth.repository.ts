@@ -2,12 +2,15 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './auth.model';
+import { OTP } from './otp.model';
 
 @Injectable()
 export class AuthRepository {
   constructor(
     @InjectRepository(User)
     private userRepository: Repository<User>,
+    @InjectRepository(OTP)
+    private otpRepository: Repository<OTP>,
   ) {}
 
   async create(userData: Partial<User>): Promise<User> {
@@ -15,7 +18,7 @@ export class AuthRepository {
     return this.userRepository.save(user);
   }
 
-  async findById(userId: string): Promise<User | null> {
+  async findById(userId: number): Promise<User | null> {
     return this.userRepository.findOne({ where: { id: userId } });
   }
 
@@ -25,55 +28,65 @@ export class AuthRepository {
     });
   }
 
-  async findByPhone(phone: string): Promise<User | null> {
-    return this.userRepository.findOne({ where: { phone } });
+  async findByPhone(phoneNumber: string): Promise<User | null> {
+    return this.userRepository.findOne({ where: { phoneNumber } });
   }
 
-  async findByEmailOrPhone(email?: string, phone?: string): Promise<User | null> {
+  async findByEmailOrPhone(email?: string, phoneNumber?: string): Promise<User | null> {
     if (email) {
       return this.userRepository.findOne({
         where: { email: email.toLowerCase() },
       });
     }
-    if (phone) {
-      return this.userRepository.findOne({ where: { phone } });
+    if (phoneNumber) {
+      return this.userRepository.findOne({ where: { phoneNumber } });
     }
     return null;
   }
 
-  async findExistingUser(email: string, phone: string): Promise<User | null> {
+  async findExistingUser(email: string, phoneNumber: string): Promise<User | null> {
     return this.userRepository.findOne({
       where: [
         { email: email.toLowerCase() },
-        { phone },
+        { phoneNumber },
       ],
     });
   }
 
-  async updateOtp(userId: string, otp: string, otpExpiry: Date): Promise<void> {
-    await this.userRepository.update(userId, {
-      otp,
-      otpExpiry,
+  async createOtp(phoneNumber: string, otpCode: string, expiryAt: Date, meta?: any): Promise<OTP> {
+    const otp = this.otpRepository.create({
+      phoneNumber,
+      otpCode,
+      expiryAt,
+      meta: meta || {},
+    });
+    return this.otpRepository.save(otp);
+  }
+
+  async findActiveOtp(phoneNumber: string, otpCode: string): Promise<OTP | null> {
+    return this.otpRepository.findOne({
+      where: {
+        phoneNumber,
+        otpCode,
+        consumedAt: null,
+      },
+      order: { expiryAt: 'DESC' },
     });
   }
 
-  async clearOtp(userId: string): Promise<void> {
-    await this.userRepository.update(userId, {
-      otp: null,
-      otpExpiry: null,
+  async consumeOtp(otpId: number): Promise<void> {
+    await this.otpRepository.update(otpId, {
+      consumedAt: new Date(),
     });
   }
 
-  async updateMpin(userId: string, hashedMpin: string): Promise<void> {
+  async updateMpin(userId: number, hashedMpin: string): Promise<void> {
     await this.userRepository.update(userId, {
-      mpin: hashedMpin,
-      mpinSet: true,
+      mpinHash: hashedMpin,
     });
   }
 
-  async markAsVerified(userId: string): Promise<void> {
-    await this.userRepository.update(userId, {
-      isVerified: true,
-    });
+  async updateProfile(userId: number, profileData: Partial<User>): Promise<void> {
+    await this.userRepository.update(userId, profileData);
   }
 }
